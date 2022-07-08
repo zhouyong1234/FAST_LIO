@@ -1,3 +1,10 @@
+## 保存地图时降采样，防止保存地图过大导致程序崩溃
+mapping
+![](result/fast_lio_mapping.png)
+
+downsize_mapping
+![](result/fast_lio_mapping_downsize.png)
+
 ## Related Works and Extended Application
 
 **SLAM:**

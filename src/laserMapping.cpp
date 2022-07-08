@@ -112,8 +112,13 @@ PointCloudXYZI::Ptr laserCloudOri(new PointCloudXYZI(100000, 1));
 PointCloudXYZI::Ptr corr_normvect(new PointCloudXYZI(100000, 1));
 PointCloudXYZI::Ptr _featsArray;
 
+PointCloudXYZI::Ptr pcl_wait_pub(new PointCloudXYZI(500000, 1));
+PointCloudXYZI::Ptr pcl_wait_save(new PointCloudXYZI());
+PointCloudXYZI::Ptr pcl_saved(new PointCloudXYZI());
+
 pcl::VoxelGrid<PointType> downSizeFilterSurf;
 pcl::VoxelGrid<PointType> downSizeFilterMap;
+
 
 KD_TREE<PointType> ikdtree;
 
@@ -466,8 +471,7 @@ void map_incremental()
     kdtree_incremental_time = omp_get_wtime() - st_time;
 }
 
-PointCloudXYZI::Ptr pcl_wait_pub(new PointCloudXYZI(500000, 1));
-PointCloudXYZI::Ptr pcl_wait_save(new PointCloudXYZI());
+
 void publish_frame_world(const ros::Publisher & pubLaserCloudFull)
 {
     if(scan_pub_en)
@@ -494,7 +498,9 @@ void publish_frame_world(const ros::Publisher & pubLaserCloudFull)
     /**************** save map ****************/
     /* 1. make sure you have enough memories
     /* 2. noted that pcd save will influence the real-time performences **/
-    if (pcd_save_en)
+    static int scan_wait_num = 0;
+    scan_wait_num++;
+    if (pcd_save_en && scan_wait_num >= 50)
     {
         int size = feats_undistort->points.size();
         PointCloudXYZI::Ptr laserCloudWorld( \
@@ -507,18 +513,26 @@ void publish_frame_world(const ros::Publisher & pubLaserCloudFull)
         }
         *pcl_wait_save += *laserCloudWorld;
 
-        static int scan_wait_num = 0;
-        scan_wait_num ++;
-        if (pcl_wait_save->size() > 0 && pcd_save_interval > 0  && scan_wait_num >= pcd_save_interval)
-        {
-            pcd_index ++;
-            string all_points_dir(string(string(ROOT_DIR) + "PCD/scans_") + to_string(pcd_index) + string(".pcd"));
-            pcl::PCDWriter pcd_writer;
-            cout << "current scan saved to /PCD/" << all_points_dir << endl;
-            pcd_writer.writeBinary(all_points_dir, *pcl_wait_save);
-            pcl_wait_save->clear();
-            scan_wait_num = 0;
-        }
+        std::cout << "-----------cloud size: " << pcl_wait_save->width * pcl_wait_save->height << " -----------" << std::endl;
+
+        scan_wait_num = 0;
+        // std::cout << "pcl_wait_save++" << std::endl;
+
+    
+        // static int scan_wait_num = 0;
+        // scan_wait_num ++;
+        // if (pcl_wait_save->size() > 0 && pcd_save_interval > 0  && scan_wait_num >= pcd_save_interval)
+        // {
+        //     // std::cout << "1111111111111111111111111111111" << std::endl;
+
+        //     pcd_index ++;
+        //     string all_points_dir(string(string(ROOT_DIR) + "PCD/scans_") + to_string(pcd_index) + string(".pcd"));
+        //     pcl::PCDWriter pcd_writer;
+        //     cout << "current scan saved to: " << all_points_dir << endl;
+        //     pcd_writer.writeBinary(all_points_dir, *pcl_wait_save);
+        //     pcl_wait_save->clear();
+        //     scan_wait_num = 0;
+        // }
     }
 }
 
@@ -623,7 +637,7 @@ void publish_path(const ros::Publisher pubPath)
     jjj++;
     if (jjj % 10 == 0) 
     {
-        path.poses.push_back(msg_body_pose);
+        // path.poses.push_back(msg_body_pose);
         pubPath.publish(path);
     }
 }
@@ -1013,11 +1027,23 @@ int main(int argc, char** argv)
     /* 2. pcd save will largely influence the real-time performences **/
     if (pcl_wait_save->size() > 0 && pcd_save_en)
     {
-        string file_name = string("scans.pcd");
+        string file_name = string("filtered_scans.pcd");
         string all_points_dir(string(string(ROOT_DIR) + "PCD/") + file_name);
         pcl::PCDWriter pcd_writer;
-        cout << "current scan saved to /PCD/" << file_name<<endl;
-        pcd_writer.writeBinary(all_points_dir, *pcl_wait_save);
+
+        cout << "filter size: " << filter_size_map_min << ", " << filter_size_map_min << ", " << filter_size_map_min << std::endl;
+        cout << "current scan saved to: " << all_points_dir << endl;
+
+        std::cout << "过滤前的点个数：" << pcl_wait_save->width * pcl_wait_save->height << std::endl;
+
+        downSizeFilterMap.setInputCloud(pcl_wait_save);
+        downSizeFilterMap.setLeafSize(filter_size_map_min, filter_size_map_min, filter_size_map_min);
+        downSizeFilterMap.filter(*pcl_saved);
+
+        std::cout << "过滤后的点个数：" << pcl_saved->width * pcl_saved->height << std::endl;
+
+
+        pcd_writer.writeBinary(all_points_dir, *pcl_saved);
     }
 
     fout_out.close();
